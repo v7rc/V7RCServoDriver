@@ -21,7 +21,7 @@ See: `QUICK_START_EDU.md`
 - BLE (NUS) low-latency control via **NimBLE-Arduino**
 - Supported protocols: `HEX`, `DEG`, `SRV / SRT`, `SS8`
 - Channel mapping to:
-  - Servo (angle control)
+  - Servo (PWM or angle control)
   - DC Motor (DIR + PWM)
   - Differential drive (Throttle / Steer)
   - Mecanum drive (Vx / Vy / Omega)
