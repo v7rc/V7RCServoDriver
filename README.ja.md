@@ -11,3 +11,7 @@ ESP32 向けの **V7RC BLE 低遅延制御ライブラリ**です。**V7RC App�
 
 ## よくある問題
 - NimBLE のヘッダが見つからない：**NimBLE-Arduino** をインストールし、`#include <NimBLEDevice.h>` を使用してください。
+
+## Maintainer
+V7RC / V7 Idea Technology Ltd.  
+Maintainer: Louis Chuang <louis@v7idea.com.tw>

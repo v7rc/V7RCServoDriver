@@ -11,3 +11,7 @@
 
 ## 常見問題（最常見）
 - NimBLE 找不到 header：請安裝 **NimBLE-Arduino**，並使用 `#include <NimBLEDevice.h>`。
+
+## Maintainer
+V7RC / V7 Idea Technology Ltd.  
+Maintainer: Louis Chuang <louis@v7idea.com.tw>

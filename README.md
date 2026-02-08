@@ -49,4 +49,4 @@ MIT License. See `LICENSE`.
 
 ## Maintainer
 V7RC / V7 Idea Technology Ltd.  
-Maintainer: louis
+Maintainer: Louis Chuang <louis@v7idea.com.tw>
