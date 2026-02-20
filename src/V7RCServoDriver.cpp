@@ -3,6 +3,9 @@
 #include <ESP32Servo.h>
 #include <math.h>
 
+// WS2812 (NeoPixel) support
+#include <Adafruit_NeoPixel.h>
+
 // ===== h2zero NimBLE-Arduino =====
 #include <NimBLEDevice.h>
 
@@ -13,7 +16,8 @@ enum V7RC_ProtocolType : uint8_t {
   V7RC_HEX,
   V7RC_DEG,
   V7RC_SRV,   // SRV / SRT 同用
-  V7RC_SS8
+  V7RC_SS8,
+  V7RC_LED    // text-based LED control protocol (any group)
 };
 
 struct V7RC_Frame {
@@ -47,6 +51,24 @@ static float               g_mecOmega     = 0.0f;
 static int                 g_chX          = 1500;
 static int                 g_chY          = 1500;
 static int                 g_chR          = 1500;
+
+// WS2812 globals
+static Adafruit_NeoPixel*  g_ws2812       = nullptr;
+static uint8_t             g_ws2812Count  = 0;
+
+// per-LED custom state (set by new LE* protocol)
+struct LedState {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+  uint8_t blinkLevel; // 0..10 (100ms units)
+};
+static LedState*          g_ledStates       = nullptr;
+static bool               g_ledCustomActive = false;
+
+// LED status for connection animation (used when no custom active)
+static bool               g_ledBlinkState    = false;
+static unsigned long      g_ledLastToggleMs  = 0;
 
 // Servo 物件與狀態
 static Servo* g_servoObjs  = nullptr;
@@ -176,6 +198,9 @@ static V7RC_Frame decodeV7RC(const char *buf) {
     frame.type = V7RC_SS8;
   } else if (buf[0] == 'S' && buf[1] == 'R' && buf[2] == 'T') {
     frame.type = V7RC_SRV; // SRT 當作 SRV 處理
+  } else if (buf[0] == 'L' && buf[1] == 'E') {
+    // any LED/LE? command maps to LED protocol
+    frame.type = V7RC_LED;
   } else {
     return frame;
   }
@@ -232,27 +257,63 @@ inline float pwmToNorm(int pwm) {
 
 static void driveDCMotorNorm(float v, const V7RC_DCMotorConfig& m) {
   v = constrain(v, -1.0f, 1.0f);
+  // 可依你的遙控抖動調大到 0.03~0.06
   const float dead = 0.03f;
 
   if (fabs(v) < dead) {
     analogWrite(m.pinPwm, 0);
+    // 建議：停車時 DIR 固定到一個狀態，避免某些驅動板在另一狀態是 brake
     digitalWrite(m.pinDir, m.dirInvert ? HIGH : LOW);
     return;
   }
 
   int power = (int)(fabs(v) * 255.0f);
 
-  if (v < 0) {
-    power = (int)(fabs(1.0f + v) * 255.0f);
+  if(v < 0) {
+    
+     power = (int)(fabs(1.0f + v) * 255.0f); 
+
   }
 
   power = constrain(power, 0, 255);
 
-  bool dirLevel = (v > 0) ? LOW : HIGH;
-  if (m.dirInvert) dirLevel = !dirLevel;
+    bool dirLevel = (v > 0) ? LOW : HIGH;
+    if (m.dirInvert) dirLevel = !dirLevel;
 
-  digitalWrite(m.pinDir, dirLevel);
-  analogWrite(m.pinPwm, power);
+    digitalWrite(m.pinDir, dirLevel);
+    analogWrite(m.pinPwm, power);
+}
+
+void driveDCMotorNorm_IN1IN2(float v, const V7RC_DCMotorConfig& m) {
+  v = constrain(v, -1.0f, 1.0f);
+  const float dead = 0.03f;
+
+  int power = (int)(fabs(v) * 255.0f);
+  power = constrain(power, 0, 255);
+
+  if (fabs(v) < dead) {
+    // Coast：兩腳都 LOW（不煞車）
+    digitalWrite(m.pinDir, LOW);
+    digitalWrite(m.pinPwm, LOW);
+    return;
+  }
+
+  // 可選：最低起轉力，避免低速卡住
+  const int minPwm = 35;
+  if (power > 0 && power < minPwm) power = minPwm;
+
+  bool forward = (v > 0);
+  if (m.dirInvert) forward = !forward;
+
+  if (forward) {
+    // IN1 = PWM, IN2 = LOW
+    analogWrite(m.pinDir, power);
+    digitalWrite(m.pinPwm, LOW);
+  } else {
+    // IN2 = PWM, IN1 = LOW
+    analogWrite(m.pinPwm, power);
+    digitalWrite(m.pinDir, LOW);
+  }
 }
 
 static void driveMecanum(
@@ -266,10 +327,10 @@ static void driveMecanum(
   float vy = pwmToNorm(chY);
   float w  = pwmToNorm(chR);
 
-  float fl = vy + vx + w;
-  float fr = vy - vx - w;
-  float rl = vy - vx + w;
-  float rr = vy + vx - w;
+  float fl = vy - vx + w;
+  float fr = vy + vx - w;
+  float rl = vy + vx + w;
+  float rr = vy - vx - w;
 
   float maxVal = max(max(abs(fl), abs(fr)), max(abs(rl), abs(rr)));
 
@@ -414,6 +475,7 @@ static void updateDrive() {
     int rl = g_driveCfg.mecRearLeft;
     int rr = g_driveCfg.mecRearRight;
 
+
     if (fl < 0 || fr < 0 || rl < 0 || rr < 0) return;
     if (fl >= (int)g_numDCMotors || fr >= (int)g_numDCMotors ||
         rl >= (int)g_numDCMotors || rr >= (int)g_numDCMotors) return;
@@ -449,6 +511,31 @@ static void updateServosSmooth() {
 }
 
 // ===== 安全保護（逾時停車 + Servo 回中立） =====
+// ---------- WS2812 helpers ----------
+
+static void setWs2812Color(uint8_t index, uint8_t r, uint8_t g, uint8_t b) {
+  if (!g_ws2812 || index >= g_ws2812Count) return;
+  g_ws2812->setPixelColor(index, g_ws2812->Color(r, g, b));
+  g_ws2812->show();
+}
+
+static void setWs2812All(uint8_t r, uint8_t g, uint8_t b) {
+  if (!g_ws2812) return;
+  for (uint8_t i = 0; i < g_ws2812Count; i++) {
+    g_ws2812->setPixelColor(i, g_ws2812->Color(r, g, b));
+  }
+  g_ws2812->show();
+}
+
+// public wrappers exposed via V7RCServoDriver class
+void V7RCServoDriver::setLedColor(uint8_t index, uint8_t r, uint8_t g, uint8_t b) {
+  setWs2812Color(index, r, g, b);
+}
+
+void V7RCServoDriver::setAllLeds(uint8_t r, uint8_t g, uint8_t b) {
+  setWs2812All(r, g, b);
+}
+
 static void safetyStop() {
   // Servo 回 initDeg
   if (g_servos && g_servoObjs && g_currentDeg && g_targetDeg) {
@@ -467,6 +554,13 @@ static void safetyStop() {
     }
   }
 
+  // turn off WS2812 leds if any
+  if (g_ws2812) {
+    setWs2812All(0, 0, 0);
+  }
+  // clear custom state so connection animation resumes next time
+  g_ledCustomActive = false;
+
   g_driveEnabled = false;
 }
 
@@ -480,22 +574,126 @@ static void handleTimeoutSafety() {
   }
 }
 
+// update LED animation (connection state or custom per-led settings)
+static void updateLedAnimation() {
+  if (!g_ws2812) return;
+
+  if (g_ledCustomActive) {
+    uint32_t now = millis();
+    for (uint8_t i = 0; i < g_ws2812Count; i++) {
+      LedState &s = g_ledStates[i];
+      uint8_t r = 0, g = 0, b = 0;
+      if (s.blinkLevel > 0) {
+        uint32_t period = 1000;
+        uint32_t onTime = s.blinkLevel * 100;
+        if (onTime >= period) {
+          r = s.r; g = s.g; b = s.b;
+        } else {
+          uint32_t phase = now % period;
+          if (phase < onTime) {
+            r = s.r; g = s.g; b = s.b;
+          }
+        }
+      }
+      g_ws2812->setPixelColor(i, g_ws2812->Color(r, g, b));
+    }
+    g_ws2812->show();
+  } else {
+    if (!deviceConnected) {
+      unsigned long now = millis();
+      if (now - g_ledLastToggleMs >= 1000) {
+        g_ledBlinkState = !g_ledBlinkState;
+        g_ledLastToggleMs = now;
+        if (g_ledBlinkState) {
+          setWs2812All(255, 0, 0);
+        } else {
+          setWs2812All(0, 0, 0);
+        }
+      }
+    } else {
+      setWs2812All(0, 255, 0);
+    }
+  }
+}
+
 // ===== Frame Byte 流處理（共用 Serial / BLE） =====
+static void handleLedCommand(const char *cmd) {
+  // cmd does not include trailing '#'
+  int len = strlen(cmd);
+  if (len < 3) return;
+  if (cmd[0] != 'L' || cmd[1] != 'E') return;
+  char grpChar = cmd[2];
+  int group;
+  // LED or LE1 = group0 (first four leds)
+  if (grpChar == 'D' || grpChar == '1') {
+    group = 0;
+  } else if (grpChar >= '2' && grpChar <= '9') {
+    // LE2->group1, LE3->group2, ...
+    group = grpChar - '1';
+  } else {
+    return;
+  }
+  if (!g_ws2812 || g_ws2812Count == 0) return;
+  int start = group * 4;
+  if (start >= g_ws2812Count) return;
+
+  const char *p = cmd + 3;
+  for (int led = 0; led < 4; led++) {
+    int idx = start + led;
+    if (idx >= g_ws2812Count) break;
+    if ((int)(p - cmd) + 4 > len) break;
+    uint8_t r = hexNibble(p[0]) * 17;
+    uint8_t g = hexNibble(p[1]) * 17;
+    uint8_t b = hexNibble(p[2]) * 17;
+    uint8_t blink = hexNibble(p[3]);
+    if (blink > 10) blink = 10;
+    g_ledStates[idx].r = r;
+    g_ledStates[idx].g = g;
+    g_ledStates[idx].b = b;
+    g_ledStates[idx].blinkLevel = blink;
+    p += 4;
+  }
+
+  g_ledCustomActive = true;
+}
+
+static char ledBuf[64];
+static int  ledIndex = 0;
+
 static void processIncomingByte(char c) {
   if (c == '#') {
-    if (rxIndex == V7RC_FRAME_SIZE - 1) {
-      rxBuf[V7RC_FRAME_SIZE - 1] = '#';
-      V7RC_Frame frame = decodeV7RC(rxBuf);
-      if (frame.valid) {
-        applyFrameToTargets(frame);
-      }
+    // finalize text buffer
+    if (ledIndex < (int)sizeof(ledBuf) - 1) {
+      ledBuf[ledIndex] = '#';
+      ledBuf[ledIndex + 1] = '\0';
+    } else {
+      ledBuf[0] = '\0';
     }
-    rxIndex = 0;
+
+    // try to decode as frame (including LED/LE1..LE4)
+    V7RC_Frame frame = decodeV7RC(ledBuf);
+    if (frame.valid) {
+      if (frame.type == V7RC_LED) {
+      handleLedCommand(ledBuf);
+    } else {
+      applyFrameToTargets(frame);
+    }
+    }
+
+    // reset all indices
+    ledIndex = 0;
+    rxIndex  = 0;
   } else {
+    // accumulate both raw bytes and text buffer
     if (rxIndex < V7RC_FRAME_SIZE - 1) {
       rxBuf[rxIndex++] = c;
     } else {
-      rxIndex = 0;  // 破壞包，重來
+      rxIndex = 0;  // corrupted frame, restart
+    }
+    if (ledIndex < (int)(sizeof(ledBuf) - 1)) {
+      ledBuf[ledIndex++] = c;
+    } else {
+      ledIndex = 0;
     }
   }
 }
@@ -516,6 +714,10 @@ public:
     deviceConnected = true;
     g_lastFrameMs   = 0;
     Serial.println("BLE connected");
+    // change LEDs to steady green when connection is established
+    if (g_ws2812) {
+      setWs2812All(0, 255, 0);
+    }
   }
 
   void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
@@ -526,6 +728,12 @@ public:
     Serial.println("BLE disconnected");
     safetyStop();
     NimBLEDevice::startAdvertising();
+    // reset blink animation timer so red blink starts immediately
+    if (g_ws2812) {
+      g_ledBlinkState = false;
+      g_ledLastToggleMs = millis();
+      setWs2812All(0, 0, 0);
+    }
   }
 };
 
@@ -673,6 +881,39 @@ void V7RCServoDriver::begin(uint8_t robotId, const V7RC_DriverConfig& cfg) {
   setupBLE();
 
   g_lastFrameMs = 0;
+
+  // optional WS2812 initialization
+  if (cfg.ws2812Enable) {
+    uint8_t count = cfg.ws2812Count;
+    if (count == 0) {
+      count = 8; // default count
+    }
+    uint8_t pin = cfg.ws2812Pin ? cfg.ws2812Pin : 8;
+    g_ws2812Count = count;
+    g_ws2812 = new Adafruit_NeoPixel(g_ws2812Count, pin, NEO_GRB + NEO_KHZ800);
+    g_ws2812->begin();
+
+    // apply brightness (user-specified, or fallback default)
+    uint8_t br = cfg.ws2812Brightness;
+    if (br == 0) {
+      br = 50; // sensible default to avoid full power
+    }
+    g_ws2812->setBrightness(br);
+
+    // allocate state array
+    g_ledStates = new LedState[g_ws2812Count];
+    for (uint8_t i = 0; i < g_ws2812Count; i++) {
+      g_ledStates[i].r = 255;
+      g_ledStates[i].g = 0;
+      g_ledStates[i].b = 0;
+      g_ledStates[i].blinkLevel = 5; // default blink 500ms on
+      g_ws2812->setPixelColor(i, g_ws2812->Color(255, 0, 0));
+    }
+    g_ws2812->show();
+    // initialize blink timing
+    g_ledBlinkState   = true;
+    g_ledLastToggleMs = millis();
+  }
 }
 
 void V7RCServoDriver::loop() {
@@ -682,6 +923,7 @@ void V7RCServoDriver::loop() {
   updateDrive();
   updateServosSmooth();
   handleTimeoutSafety();
+  updateLedAnimation();
 
   unsigned long endTime = millis();
   int waitTime = (int)g_smooth.updateMs - (int)(endTime - startTime);

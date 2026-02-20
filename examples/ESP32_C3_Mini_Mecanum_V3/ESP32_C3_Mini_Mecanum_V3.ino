@@ -12,15 +12,16 @@ V7RC_ServoConfig myServos[] = {
   { 5, 1000, 2000, 0.0f, 90.0f, 45.0f },
   { 6, 1000, 2000, 0.0f, 90.0f, 45.0f }
 };
-const uint8_t NUM_SERVOS = sizeof(myServos) / sizeof(myServos[0]);
+// const uint8_t NUM_SERVOS = sizeof(myServos) / sizeof(myServos[0]);
+const uint8_t NUM_SERVOS = 1;
 
 // ───── DC 馬達設定（麥克納姆 4 輪） ─────
 // 依照你實際接線修改 pinDir / pinPwm
 V7RC_DCMotorConfig myMotors[] = {
-  { 21, 20, false }, // 0: Front-Left
+  { 20, 21, false }, // 0: Front-Left
   { 10, 0, false }, // 1: Front-Right
-  { 2, 1, false }, // 2: Rear-Left
-  { 4, 3, false }  // 3: Rear-Right
+  { 1, 2, false }, // 2: Rear-Left
+  { 3, 4, false }  // 3: Rear-Right
 };
 const uint8_t NUM_MOTORS = sizeof(myMotors) / sizeof(myMotors[0]);
 
@@ -62,8 +63,8 @@ V7RC_DriveConfig myDriveCfg = {
 V7RC_ChannelConfig myChannelMap[] = {
   { CH_DRIVE_MEC_VX,    -1 }, // ch0
   { CH_DRIVE_MEC_VY,    -1 }, // ch1
-  { CH_DRIVE_MEC_OMEGA, -1 }, // ch2
-  { CH_NONE,            -1 }, // ch3
+  { CH_SERVO,           0  }, // ch2
+  { CH_DRIVE_MEC_OMEGA, -1 }, // ch3
   { CH_NONE,            -1 }, // ch4
   { CH_NONE,            -1 }, // ch5
   { CH_NONE,            -1 }, // ch6
@@ -83,7 +84,7 @@ const uint8_t NUM_CHANNEL_MAP = sizeof(myChannelMap) / sizeof(myChannelMap[0]);
 
 // ───── Driver 總設定 ─────
 V7RC_DriverConfig driverCfg = {
-  .bleBaseName        = "V7RC-ZERO",
+  .bleBaseName        = "V7RC-TEST",
   .servos             = myServos,
   .numServos          = NUM_SERVOS,
   .smooth             = mySmooth,
@@ -92,17 +93,25 @@ V7RC_DriverConfig driverCfg = {
   .numDCMotors        = NUM_MOTORS,
   .drive              = myDriveCfg,
   .channelMap         = myChannelMap,
-  .numChannelMap      = NUM_CHANNEL_MAP
+  .numChannelMap      = NUM_CHANNEL_MAP,
+
+  .ws2812Brightness   = 50, // brightness 0-255 (0→default)
+  .ws2812Enable       = true,
+  .ws2812Pin          = 8,
+  .ws2812Count        = 8
 };
 
 
-const uint8_t ROBOT_ID = 0;  // 多台機器可用 1..99
+const uint8_t ROBOT_ID = 1;  // 多台機器可用 1..99
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
   v7rc.begin(ROBOT_ID, driverCfg);
+
+  // strip will blink red initially; call v7rc.setAllLeds() to change
+  // individual control via LE* protocol is also supported by the lib
 }
 
 void loop() {

@@ -1,6 +1,9 @@
 #pragma once
 #include <Arduino.h>
 
+// WS2812 support
+#include <Adafruit_NeoPixel.h>
+
 // ===== Servo 設定 =====
 struct V7RC_ServoConfig {
   uint8_t pin;      // Servo 訊號腳位
@@ -86,6 +89,17 @@ struct V7RC_DriverConfig {
   // Channel Map（建議長度 16）
   V7RC_ChannelConfig* channelMap;
   uint8_t numChannelMap;
+
+  // optional WS2812 RGB LED strip configuration
+  // enable: when true the strip will be initialized; default false
+  // pin: data pin to use (defaults to 8 if set to zero)
+  // count: number of LEDs in the strip (0 defaults to 8)
+  // brightness: 0-255 brightness level for all LEDs; if 0 a sane
+  //   default (50) is applied.  Only used when ws2812Enable is true.
+  uint8_t ws2812Brightness;
+  bool    ws2812Enable;
+  uint8_t ws2812Pin;
+  uint8_t ws2812Count;
 };
 
 class V7RCServoDriver {
@@ -93,4 +107,9 @@ public:
   // robotId: 1 → <bleBaseName>-01, 2 → <bleBaseName>-02 ...
   void begin(uint8_t robotId, const V7RC_DriverConfig& cfg);
   void loop();
+
+  // ------------ WS2812 RGB LED strip ------------
+  // these functions are no-ops if the strip was not initialized
+  static void setLedColor(uint8_t index, uint8_t r, uint8_t g, uint8_t b);
+  static void setAllLeds(uint8_t r, uint8_t g, uint8_t b);
 };

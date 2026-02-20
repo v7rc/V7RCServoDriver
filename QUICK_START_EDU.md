@@ -27,6 +27,19 @@ Arduino IDE → Tools → Manage Libraries：
 - 麥克納姆：`examples/ESP32_C3_Mini_Mecanum_V3/ESP32_C3_Mini_Mecanum_V3.ino`
 - 差速車：`examples/ESP32_C3_Differential_Drive/ESP32_C3_Differential_Drive.ino`
 
+> **WS2812 LED**
+> 這個範例啟用了燈條（`.ws2812Enable = true`），使用 GPIO8、8 顆 LED；
+> 開機時紅色閃爍，每秒亮/暗；BLE 連線成功後會自動變為恆亮綠色。
+> 若不需要 LED 可將 `.ws2812Enable` 設為 `false`，那樣 pin/count 將被忽略；
+> 啟用後可透過 `.ws2812Pin`、`.ws2812Count` 變更，如設為零將換成預設值（8顆、腳位8）。
+>
+> ### LE* 控制協議
+> 若要從 V7RC App 傳送單顆燈控制，請使用文字命令：
+> `LE?rrrrggggbbbbx#`，其中 `?` 是 `D`（0–3）、`2`（4–7）、`3`（8–11）……
+> 各 LED 使用 4 個字元：紅/綠/藍/閃爍，前 3 個以 `0`–`F` 表示 16 級 (轉成 0–255，
+> 乘 17)，第四個以 `0`–`A` 表示每秒亮的百毫秒份量 (0=關, A=恆亮)。
+> 範例：`LED0123A4567B89C#` 設定前 4 顆。自訂後將取代預設的連線動畫。
+
 ---
 ## 3) 接線圖（文字版）
 

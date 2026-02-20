@@ -86,7 +86,13 @@ V7RC_DriverConfig driverCfg = {
   .numDCMotors        = NUM_MOTORS,
   .drive              = myDriveCfg,
   .channelMap         = myChannelMap,
-  .numChannelMap      = NUM_CHANNEL_MAP
+  .numChannelMap      = NUM_CHANNEL_MAP,
+
+  // WS2812 strip (default data pin 8, 8 LEDs)
+  .ws2812Brightness   = 50, // dimmed by default; change 0-255
+  .ws2812Enable       = true,
+  .ws2812Pin          = 8,
+  .ws2812Count        = 8
 };
 
 
@@ -97,6 +103,12 @@ void setup() {
   delay(1000);
 
   v7rc.begin(ROBOT_ID, driverCfg);
+
+  // you can change strip colour at any time:
+  // v7rc.setAllLeds(255, 0, 0); // red
+  //
+  // To control individual LEDs from the V7RC app use the LE* protocol:
+  // e.g. send "LED0F0F0A...#" to set first four pixels.
 }
 
 void loop() {
