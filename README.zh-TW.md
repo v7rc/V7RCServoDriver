@@ -9,18 +9,14 @@
   - 麥克納姆輪：`examples/ESP32_C3_Mini_Mecanum_V3/ESP32_C3_Mini_Mecanum_V3.ino`
   - 差速車：`examples/ESP32_C3_Differential_Drive/ESP32_C3_Differential_Drive.ino`
 
-> **WS2812 LED**
-> 範例已經啟用燈條（`.ws2812Enable = true`），使用 GPIO8、8 顆 LED；
-> 開機時紅色閃爍（每秒亮/暗），BLE 連線後會自動改為恆亮綠色。
-> 若不需要可把 `.ws2812Enable` 設為 `false`，那麼 `ws2812Pin`/`ws2812Count` 會被忽略；啟用後可
-> 使用這兩個欄位修改腳位與數量，且設為零亦會得到預設值。
+> **LED 行為**
+> 當 WS2812 啟用時，燈條在未連線時會先顯示紅色並每秒閃爍一次；當 BLE 連線建立後，LED 會改為恆亮綠色。
+> 若要使用 LED 功能，需在 `V7RC_DriverConfig` 中把 `ws2812Enable` 設為 true。
 >
-> ### LED 控制協議
-> 從 App 傳送字串可個別設定燈色與閃爍。格式為 `LE?rrrrggggbbbbx#`。
-> `?` 為 `D` 表示第1~4顆, `2` 表示第5~8顆, 以此類推。每顆 LED 用 4 個字元：
-> 紅/綠/藍（`0`–`F`，乘 17 轉成 0–255），和閃爍程度 (`0`–`A` 表示 0~10 十分位
-> 的 100ms 片段)。例如 `LED0123A4567B89C#` 將設定前四顆。送達後會立即生效，並
-> 取代預設連線動畫。
+> ### LED 協議
+> 使用自訂的 V7RC 協議可讓 App 設定每顆 LED。格式為 `LE?yyyyyyyyyyyyyyyy#`，其中 `?` 可為 `D` 或數字 (`1`–`9`)。`D` 與 `1` 均指第一組四顆 LED；`2` 表示第 5–8 顆，`3` 表示第 9–12 顆，以此類推（數字 n 會選擇第 n‑1 組 4 顆）。可用更大的數字擴充到更多組。
+> 每顆 LED 使用四個字元（R、G、B、blink）。R/G/B 為 16 進位 `0`–`F`（0..15），乘 17 後轉成 0..255。`blink` 為 `0`–`A`（0..10），表示每秒開啟時間 0–1000 ms（值×100）。例如：
+> `LEDF00A0F0A00FAFFF5#` 設定前四顆 LED，第一顆為紅色，第二顆為綠色，第三顆為藍色，第四顆為白色並以 500ms 亮/500ms 滅閃。
 
 ## 常見問題（最常見）
 - NimBLE 找不到 header：請安裝 **NimBLE-Arduino**，並使用 `#include <NimBLEDevice.h>`。

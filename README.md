@@ -28,7 +28,7 @@ See: `QUICK_START_EDU.md`
 > Each LED consumes 4 characters (R,G,B,blink). R/G/B are hex digits `0`–`F` (0..15)
 > scaled to 0..255 (`*17`). `blink` is `0`–`A` (0..10) representing 0–1000 ms of on-time per
 > second (`value*100`). Example:
-> `LED0123A4567B89C#` sets the first four LEDs.
+> `LEDF00A0F0A00FAFFF5#` sets the first four LEDs, The first one is RED color, the second one is GREEN color, the third one is BLUE color, the 4th one is white with blink(500ms off and 500ms on).
 >
 > Received commands are parsed by the library and applied immediately; custom
 > settings override the default connection animation until cleared (no clear
