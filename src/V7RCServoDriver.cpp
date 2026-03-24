@@ -842,9 +842,9 @@ static void initDCMotors() {
 }
 
 // ===== V7RCServoDriver 實作 =====
-void V7RCServoDriver::begin(uint8_t robotId, const V7RC_DriverConfig& cfg) {
+void V7RCServoDriver::begin(uint32_t robotId, const V7RC_DriverConfig& cfg) {
   if (robotId < 1)  robotId = 1;
-  if (robotId > 99) robotId = 99;
+  // if (robotId > 99) robotId = 99;
 
   g_servos      = cfg.servos;
   g_numServos   = cfg.numServos;

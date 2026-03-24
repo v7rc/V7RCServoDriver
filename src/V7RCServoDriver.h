@@ -105,7 +105,7 @@ struct V7RC_DriverConfig {
 class V7RCServoDriver {
 public:
   // robotId: 1 → <bleBaseName>-01, 2 → <bleBaseName>-02 ...
-  void begin(uint8_t robotId, const V7RC_DriverConfig& cfg);
+  void begin(uint32_t robotId, const V7RC_DriverConfig& cfg);
   void loop();
 
   // ------------ WS2812 RGB LED strip ------------

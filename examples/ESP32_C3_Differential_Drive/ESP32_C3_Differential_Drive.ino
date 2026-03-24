@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "V7RCServoDriver.h"
+#include <esp_mac.h>  // ESP32 SDK for MAC address
 
 V7RCServoDriver v7rc;
 
@@ -24,6 +25,26 @@ V7RC_SmoothConfig mySmooth = {
   .deadbandDeg = 2.0f,
   .updateMs    = 10
 };
+
+// ───── 自動生成 ROBOT_ID 從 BLE MAC 位址最後 4 個 Byte ─────
+uint32_t getRobotIdFromMac() {
+  uint8_t mac[6];
+  
+  // 讀取 BLE MAC 位址
+  esp_read_mac(mac, ESP_MAC_BT);
+  
+  // 將最後 4 個 Byte 組合成 uint32_t (mac[2]~mac[5])
+  uint32_t robotId = ((uint32_t)mac[4] << 8)  | 
+                     (uint32_t)mac[5];
+  
+  // 輸出到 Serial 供參考
+  Serial.printf("BLE MAC Address: %02X:%02X:%02X:%02X:%02X:%02X\n", 
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  Serial.printf("Generated ROBOT_ID: %u (0x%08X) from last 4 bytes of MAC\n", robotId, robotId);
+  Serial.printf("MAC Last 4 Bytes: %02X:%02X:%02X:%02X\n", mac[2], mac[3], mac[4], mac[5]);
+  
+  return robotId;
+}
 
 // ───── Drive 設定：麥克納姆 ─────
 V7RC_DriveConfig myDriveCfg = {
@@ -101,6 +122,9 @@ const uint8_t ROBOT_ID = 0;  // 多台機器可用 1..99
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  // 自動生成 ROBOT_ID
+  uint32_t robotId = getRobotIdFromMac();
 
   v7rc.begin(ROBOT_ID, driverCfg);
 
