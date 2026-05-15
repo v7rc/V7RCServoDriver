@@ -117,8 +117,6 @@ V7RC_DriverConfig driverCfg = {
 };
 
 
-const uint8_t ROBOT_ID = 0;  // 多台機器可用 1..99
-
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -126,7 +124,7 @@ void setup() {
   // 自動生成 ROBOT_ID
   uint32_t robotId = getRobotIdFromMac();
 
-  v7rc.begin(ROBOT_ID, driverCfg);
+  v7rc.begin(robotId, driverCfg);
 
   // you can change strip colour at any time:
   // v7rc.setAllLeds(255, 0, 0); // red

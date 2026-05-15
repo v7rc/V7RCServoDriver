@@ -2,6 +2,7 @@
 
 #include <ESP32Servo.h>
 #include <math.h>
+#include <string.h>
 
 // WS2812 (NeoPixel) support
 #include <Adafruit_NeoPixel.h>
@@ -76,7 +77,7 @@ static float* g_currentDeg = nullptr;
 static float* g_targetDeg  = nullptr;
 
 // ===== BLE (NimBLE) =====
-static char                  g_bleDeviceName[24] = "V7RC-ROBOT-01";
+static char                  g_bleDeviceName[30] = "V7RC-ROBOT-01";
 static NimBLEServer*         pServer             = nullptr;
 static NimBLECharacteristic* pRxCharacteristic   = nullptr;
 static NimBLECharacteristic* pTxCharacteristic   = nullptr;
@@ -107,6 +108,17 @@ static int hexNibble(char c) {
   if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
   if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
   return 0;
+}
+
+static void buildBleDeviceName(const char* baseName, uint32_t robotId) {
+  const char* safeBaseName = (baseName && baseName[0]) ? baseName : "V7RC";
+  char suffix[12];
+  snprintf(suffix, sizeof(suffix), "-%02lu", (unsigned long)robotId);
+
+  size_t suffixLen = strlen(suffix);
+  size_t maxBaseLen = sizeof(g_bleDeviceName) - suffixLen - 1;
+  snprintf(g_bleDeviceName, sizeof(g_bleDeviceName), "%.*s%s",
+           (int)maxBaseLen, safeBaseName, suffix);
 }
 
 // 角度 ↔ us
@@ -784,8 +796,11 @@ static void setupBLE() {
 
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
   adv->reset();
+  adv->enableScanResponse(true);
   adv->addServiceUUID(pService->getUUID());
-  adv->setName(g_bleDeviceName);
+  if (!adv->setName(g_bleDeviceName)) {
+    Serial.println("BLE warning: device name did not fit in advertising data");
+  }
 
   NimBLEDevice::startAdvertising();
 
@@ -869,8 +884,7 @@ void V7RCServoDriver::begin(uint32_t robotId, const V7RC_DriverConfig& cfg) {
   g_chY          = 1500;
   g_chR          = 1500;
 
-  snprintf(g_bleDeviceName, sizeof(g_bleDeviceName),
-           "%s-%02u", cfg.bleBaseName ? cfg.bleBaseName : "V7RC", robotId);
+  buildBleDeviceName(cfg.bleBaseName, robotId);
 
   Serial.println();
   Serial.print("V7RC Servo Driver Begin, BLE Name = ");
